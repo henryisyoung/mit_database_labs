@@ -18,12 +18,16 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class Catalog {
 
+    private Map<String, DbFile> namesMap;
+    private Map<Integer, TableInfo> idsMap;
+
     /**
      * Constructor.
      * Creates a new, empty catalog.
      */
     public Catalog() {
-        // some code goes here
+        this.namesMap = new ConcurrentHashMap<>();
+        this.idsMap = new ConcurrentHashMap<>();
     }
 
     /**
@@ -36,7 +40,8 @@ public class Catalog {
      * @param pkeyField the name of the primary key field
      */
     public void addTable(DbFile file, String name, String pkeyField) {
-        // some code goes here
+        namesMap.put(name, file);
+        idsMap.put(file.getId(), new TableInfo(file, pkeyField, name));
     }
 
     public void addTable(DbFile file, String name) {
@@ -59,8 +64,10 @@ public class Catalog {
      * @throws NoSuchElementException if the table doesn't exist
      */
     public int getTableId(String name) throws NoSuchElementException {
-        // some code goes here
-        return 0;
+        if (namesMap.containsKey(name)) {
+            return namesMap.get(name).getId();
+        }
+        throw new NoSuchElementException();
     }
 
     /**
@@ -70,8 +77,10 @@ public class Catalog {
      * @throws NoSuchElementException if the table doesn't exist
      */
     public TupleDesc getTupleDesc(int tableid) throws NoSuchElementException {
-        // some code goes here
-        return null;
+        if (idsMap.containsKey(tableid)) {
+            return idsMap.get(tableid).getFile().getTupleDesc();
+        }
+        throw new NoSuchElementException();
     }
 
     /**
@@ -81,28 +90,34 @@ public class Catalog {
      *     function passed to addTable
      */
     public DbFile getDatabaseFile(int tableid) throws NoSuchElementException {
-        // some code goes here
-        return null;
+        if (idsMap.containsKey(tableid)) {
+            return idsMap.get(tableid).getFile();
+        }
+        throw new NoSuchElementException();
     }
 
     public String getPrimaryKey(int tableid) {
-        // some code goes here
-        return null;
+        if (idsMap.containsKey(tableid)) {
+            return idsMap.get(tableid).getPk();
+        }
+        throw new NoSuchElementException();
     }
 
     public Iterator<Integer> tableIdIterator() {
-        // some code goes here
-        return null;
+        return idsMap.keySet().iterator();
     }
 
     public String getTableName(int id) {
-        // some code goes here
-        return null;
+        if (idsMap.containsKey(id)) {
+            return idsMap.get(id).getName();
+        }
+        throw new NoSuchElementException();
     }
     
     /** Delete all tables from the catalog */
     public void clear() {
-        // some code goes here
+        this.namesMap.clear();
+        this.idsMap.clear();
     }
     
     /**
@@ -157,6 +172,30 @@ public class Catalog {
         } catch (IndexOutOfBoundsException e) {
             System.out.println ("Invalid catalog entry : " + line);
             System.exit(0);
+        }
+    }
+
+    private class TableInfo {
+        private DbFile file;
+        private String pk;
+        private String name;
+
+        private TableInfo(DbFile file, String pk, String name) {
+            this.file = file;
+            this.pk = pk;
+            this.name = name;
+        }
+
+        public DbFile getFile() {
+            return file;
+        }
+
+        public String getPk() {
+            return pk;
+        }
+
+        public String getName() {
+            return name;
         }
     }
 }

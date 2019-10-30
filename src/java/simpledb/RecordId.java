@@ -1,6 +1,7 @@
 package simpledb;
 
 import java.io.Serializable;
+import java.nio.ByteBuffer;
 
 /**
  * A RecordId is a reference to a specific tuple on a specific page of a
@@ -9,6 +10,9 @@ import java.io.Serializable;
 public class RecordId implements Serializable {
 
     private static final long serialVersionUID = 1L;
+
+    private final PageId pageId;
+    private final Integer tupleNO;
 
     /**
      * Creates a new RecordId referring to the specified PageId and tuple
@@ -20,23 +24,22 @@ public class RecordId implements Serializable {
      *            the tuple number within the page.
      */
     public RecordId(PageId pid, int tupleno) {
-        // some code goes here
+        this.pageId = pid;
+        this.tupleNO = tupleno;
     }
 
     /**
      * @return the tuple number this RecordId references.
      */
     public int getTupleNumber() {
-        // some code goes here
-        return 0;
+        return tupleNO;
     }
 
     /**
      * @return the page id this RecordId references.
      */
     public PageId getPageId() {
-        // some code goes here
-        return null;
+        return pageId;
     }
 
     /**
@@ -47,8 +50,15 @@ public class RecordId implements Serializable {
      */
     @Override
     public boolean equals(Object o) {
-        // some code goes here
-        throw new UnsupportedOperationException("implement this");
+        if(!(o instanceof RecordId))
+            return false;
+
+        RecordId temp = (RecordId) o;
+        if(this.hashCode() == temp.hashCode()) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -59,9 +69,16 @@ public class RecordId implements Serializable {
      */
     @Override
     public int hashCode() {
-        // some code goes here
-        throw new UnsupportedOperationException("implement this");
+        int hashCode = pageId.hashCode();
 
+        int a = 31;
+        int BIG_PRIME = 111236313;
+        byte[] bytes = ByteBuffer.allocate(4).putInt(getTupleNumber()).array();
+
+        for (Byte b : bytes){
+            hashCode = (b * a + hashCode) % BIG_PRIME;
+        }
+        return hashCode;
     }
 
 }

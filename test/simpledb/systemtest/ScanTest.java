@@ -1,7 +1,5 @@
 package simpledb.systemtest;
 
-import simpledb.systemtest.SystemTestUtil;
-
 import static org.junit.Assert.*;
 
 import java.io.File;
