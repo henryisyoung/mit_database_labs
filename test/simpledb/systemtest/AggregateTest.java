@@ -3,6 +3,7 @@ package simpledb.systemtest;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import simpledb.*;
@@ -48,7 +49,8 @@ public class AggregateTest extends SimpleDbTestBase {
         return value;
     }
 
-    private ArrayList<ArrayList<Integer>> aggregate(ArrayList<ArrayList<Integer>> tuples, Aggregator.Op operation, int aggregateColumn, int groupColumn) {
+    private ArrayList<ArrayList<Integer>> aggregate(ArrayList<ArrayList<Integer>> tuples, Aggregator.Op operation,
+                                                    int aggregateColumn, int groupColumn) {
         // Group the values
         HashMap<Integer, ArrayList<Integer>> values = new HashMap<Integer, ArrayList<Integer>>();
         for (ArrayList<Integer> t : tuples) {

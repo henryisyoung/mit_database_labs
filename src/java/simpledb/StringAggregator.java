@@ -1,12 +1,18 @@
 package simpledb;
 
+import java.util.*;
+
 /**
  * Knows how to compute some aggregate over a set of StringFields.
  */
 public class StringAggregator implements Aggregator {
 
     private static final long serialVersionUID = 1L;
-
+    private final int gbfield;
+    private final int afield;
+    private final Type gbfieldtype;
+    private final Op what;
+    private Map<String, StringAggregateValue> map;
     /**
      * Aggregate constructor
      * @param gbfield the 0-based index of the group-by field in the tuple, or NO_GROUPING if there is no grouping
@@ -17,7 +23,13 @@ public class StringAggregator implements Aggregator {
      */
 
     public StringAggregator(int gbfield, Type gbfieldtype, int afield, Op what) {
-        // some code goes here
+        this.afield = afield;
+        this.gbfield = gbfield;
+        this.gbfieldtype = gbfieldtype;
+        if (what != Op.COUNT)
+            throw new IllegalArgumentException("Invalid operator type " + what);
+        this.what = what;
+        this.map = new HashMap<>();
     }
 
     /**
@@ -25,7 +37,15 @@ public class StringAggregator implements Aggregator {
      * @param tup the Tuple containing an aggregate field and a group-by field
      */
     public void mergeTupleIntoGroup(Tuple tup) {
-        // some code goes here
+        String groupVal = "";
+        if (gbfield != NO_GROUPING) {
+            groupVal = tup.getField(gbfield).toString();
+        }
+        StringAggregateValue value = map.getOrDefault(groupVal, new StringAggregateValue());
+
+        value.count++;
+
+        map.put(groupVal, value);
     }
 
     /**
@@ -37,8 +57,43 @@ public class StringAggregator implements Aggregator {
      *   aggregate specified in the constructor.
      */
     public OpIterator iterator() {
-        // some code goes here
-        throw new UnsupportedOperationException("please implement me for lab2");
+        LinkedList<Tuple> result = new LinkedList<Tuple>();
+        int aggField = 1;
+        TupleDesc td;
+
+        if (gbfield == NO_GROUPING) {
+            td = new TupleDesc(new Type[] { Type.INT_TYPE });
+            aggField = 0;
+        } else {
+            td = new TupleDesc(new Type[] { gbfieldtype, Type.INT_TYPE });
+        }
+
+        // iterate over groups and create summary tuples
+        for (String groupVal : map.keySet()) {
+            StringAggregateValue agg = map.get(groupVal);
+            Tuple tup = new Tuple(td);
+
+            if (gbfield != NO_GROUPING) {
+                if (gbfieldtype == Type.INT_TYPE)
+                    tup.setField(0, new IntField(new Integer(groupVal)));
+                else tup.setField(0, new StringField(groupVal, Type.STRING_LEN));
+            }
+
+            switch (what) {
+                case COUNT: tup.setField(aggField, new IntField(agg.count));
+                    break;
+            }
+
+            result.add(tup);
+        }
+        return new TupleIterator(td, Collections.unmodifiableList(result));
     }
 
+    class StringAggregateValue {
+        public Integer count;
+
+        public StringAggregateValue(){
+            this.count = 0;
+        }
+    }
 }

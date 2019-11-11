@@ -2,7 +2,7 @@ package simpledb;
 
 import java.io.*;
 
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -145,8 +145,27 @@ public class BufferPool {
      */
     public void insertTuple(TransactionId tid, int tableId, Tuple t)
         throws DbException, IOException, TransactionAbortedException {
-        // some code goes here
-        // not necessary for lab1
+        DbFile file = Database.getCatalog().getDatabaseFile(tableId);
+        ArrayList<Page> pages = file.insertTuple(tid, t);
+
+        synchronized (this) {
+            for (Page p : pages) {
+                p.markDirty(true, tid);
+
+                // if page in pool already, done.
+                if (pagesMap.get(p.getId()) != null) {
+                    // replace old page with new one in case addTuple returns a
+                    // new copy of the page
+                    pagesMap.put(p.getId(), p);
+                } else {
+
+                    // put page in pool
+                    if (pagesMap.size() >= numPages)
+                        evictPage();
+                    pagesMap.put(p.getId(), p);
+                }
+            }
+        }
     }
 
     /**
@@ -164,8 +183,27 @@ public class BufferPool {
      */
     public  void deleteTuple(TransactionId tid, Tuple t)
         throws DbException, IOException, TransactionAbortedException {
-        // some code goes here
-        // not necessary for lab1
+        DbFile file = Database.getCatalog().getDatabaseFile(t.getRecordId().getPageId().getTableId());
+        ArrayList<Page> dirtypages = file.deleteTuple(tid, t);
+
+        synchronized (this) {
+            for (Page p : dirtypages) {
+                p.markDirty(true, tid);
+
+                // if page in pool already, done.
+                if (pagesMap.get(p.getId()) != null) {
+                    // replace old page with new one in case deleteTuple returns
+                    // a new copy of the page
+                    pagesMap.put(p.getId(), p);
+                } else {
+
+                    // put page in pool
+                    if (pagesMap.size() >= numPages)
+                        evictPage();
+                    pagesMap.put(p.getId(), p);
+                }
+            }
+        }
     }
 
     /**
@@ -174,9 +212,9 @@ public class BufferPool {
      *     break simpledb if running in NO STEAL mode.
      */
     public synchronized void flushAllPages() throws IOException {
-        // some code goes here
-        // not necessary for lab1
-
+        Iterator<PageId> i = pagesMap.keySet().iterator();
+        while (i.hasNext())
+            flushPage(i.next());
     }
 
     /** Remove the specific page id from the buffer pool.
@@ -188,8 +226,10 @@ public class BufferPool {
         are removed from the cache so they can be reused safely
     */
     public synchronized void discardPage(PageId pid) {
-        // some code goes here
-        // not necessary for lab1
+        Page p = pagesMap.get(pid);
+        if (p != null) {
+            pagesMap.remove(pid);
+        }
     }
 
     /**
@@ -197,8 +237,13 @@ public class BufferPool {
      * @param pid an ID indicating the page to flush
      */
     private synchronized  void flushPage(PageId pid) throws IOException {
-        // some code goes here
-        // not necessary for lab1
+        Page p = pagesMap.get(pid);
+        if (p == null)
+            return; // not in buffer pool -- doesn't need to be flushed
+
+        DbFile file = Database.getCatalog().getDatabaseFile(pid.getTableId());
+        file.writePage(p);
+        p.markDirty(false, null);
     }
 
     /** Write all pages of the specified transaction to disk.
@@ -213,8 +258,40 @@ public class BufferPool {
      * Flushes the page to disk to ensure dirty pages are updated on disk.
      */
     private synchronized  void evictPage() throws DbException {
-        // some code goes here
-        // not necessary for lab1
+        // pick a random page and flush it.
+        // XXX this will work for lab1, but not for lab4.
+        // XXX this can cause pages to be evicted that have uncommitted updates
+        // on them
+        Random random = new Random();
+        Object pids[] = pagesMap.keySet().toArray();
+        PageId pid = (PageId) pids[random.nextInt(pids.length)];
+        try {
+            Page p = pagesMap.get(pid);
+            if (p.isDirty() != null) { // if this is dirty, remove first
+                // non-dirty
+                boolean gotNew = false;
+                for (PageId pg : pagesMap.keySet()) {
+                    if (pagesMap.get(pg).isDirty() == null) {
+                        pid = pg;
+                        gotNew = true;
+                        break;
+                    }
+                }
+                if (!gotNew) {
+                    throw new DbException(
+                            "All buffer pool slots contain dirty pages;  COMMIT or ROLLBACK to continue.");
+                }
+            }
+            // XXX: The above code makes sure page is not dirty.
+            // Assuming we have FORCE, Why do we flush it to disk?
+            // Answer: yes we don't need this if we have FORCE, but we do need
+            // it if we don't.
+            // it doesn't hurt to keep it here.
+            flushPage(pid);
+        } catch (IOException e) {
+            throw new DbException("could not evict page");
+        }
+        pagesMap.remove(pid);
     }
 
 }

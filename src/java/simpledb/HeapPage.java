@@ -19,9 +19,11 @@ public class HeapPage implements Page {
     final Tuple tuples[];
     final int numSlots;
 
+    private Map<RecordId, Integer> tuplesMap;
     byte[] oldData;
     private final Byte oldDataLock=new Byte((byte)0);
-
+    private volatile boolean dirty;
+    private volatile TransactionId dirtierId;
     /**
      * Create a HeapPage from a set of bytes of data read from disk.
      * The format of a HeapPage is a set of header bytes indicating
@@ -43,6 +45,9 @@ public class HeapPage implements Page {
         this.td = Database.getCatalog().getTupleDesc(id.getTableId());
         this.numSlots = getNumTuples();
         DataInputStream dis = new DataInputStream(new ByteArrayInputStream(data));
+        this.tuplesMap = new HashMap<>();
+        this.dirty = false;
+        this.dirtierId = null;
 
         // allocate and read the header slots of this page
         header = new byte[getHeaderSize()];
@@ -242,8 +247,12 @@ public class HeapPage implements Page {
      * @param t The tuple to delete
      */
     public void deleteTuple(Tuple t) throws DbException {
-        // some code goes here
-        // not necessary for lab1
+        RecordId rid = t.getRecordId();
+        if ((rid.getPageId().getPageNumber() != pid.getPageNumber()) || (rid.getPageId().getTableId() != pid.getTableId()))
+            throw new DbException("tried to delete tuple on invalid page or table");
+        if (!isSlotUsed(rid.getTupleNumber()))
+            throw new DbException("tried to delete null tuple.");
+        markSlotUsed(rid.getTupleNumber(), false);
     }
 
     /**
@@ -254,8 +263,26 @@ public class HeapPage implements Page {
      * @param t The tuple to add.
      */
     public void insertTuple(Tuple t) throws DbException {
-        // some code goes here
-        // not necessary for lab1
+        if (!t.getTupleDesc().equals(td))
+            throw new DbException("type mismatch, in addTuple");
+
+        int goodSlot = -1;
+        for (int i = 0; i < numSlots; i++) {
+            if (!isSlotUsed(i) && goodSlot == -1) {
+                goodSlot = i;
+                break;
+            }
+        }
+
+        if (goodSlot == -1)
+            throw new DbException("called addTuple on page with no empty slots.");
+
+        markSlotUsed(goodSlot, true);
+        Debug.log(1, "HeapPage.addTuple: new tuple, tableId = %d pageId = %d slotId = %d", pid.getTableId(),
+                pid.getPageNumber(), goodSlot);
+        RecordId rid = new RecordId(pid, goodSlot);
+        t.setRecordId(rid);
+        tuples[goodSlot] = t;
     }
 
     /**
@@ -263,17 +290,15 @@ public class HeapPage implements Page {
      * that did the dirtying
      */
     public void markDirty(boolean dirty, TransactionId tid) {
-        // some code goes here
-	// not necessary for lab1
+        this.dirty = dirty;
+        this.dirtierId = dirty ? tid : null;
     }
 
     /**
      * Returns the tid of the transaction that last dirtied this page, or null if the page is not dirty
      */
     public TransactionId isDirty() {
-        // some code goes here
-	// Not necessary for lab1
-        return null;      
+        return dirtierId;
     }
 
     /**
@@ -292,17 +317,46 @@ public class HeapPage implements Page {
      * Returns true if associated slot on this page is filled.
      */
     public boolean isSlotUsed(int i) {
-        int headerbyte = header[i / 8] >> i % 8; // column in the bitmap
+        int byteNum = i / 8;//计算在第几个字节
+        int posInByte = i % 8;//计算在该字节的第几位,从右往左算（这是因为JVM用big-ending）
+        return isOne(header[byteNum], posInByte);
+    }
 
-        return headerbyte != 0;
+    /**
+     * @param target    要判断的bit所在的byte
+     * @param posInByte 要判断的bit在byte的从右往左的偏移量，从0开始
+     * @return target从右往左偏移量pos处的bit是否为1
+     */
+    private boolean isOne(byte target, int posInByte) {
+        // 例如该byte是11111011,pos是2(也就是0那个bit的位置)
+        // 那么只需先左移7-2=5位即可通过符号位来判断，注意要强转
+        return (byte) (target << (7 - posInByte)) < 0;
     }
 
     /**
      * Abstraction to fill or clear a slot on this page.
      */
     private void markSlotUsed(int i, boolean value) {
-        // some code goes here
-        // not necessary for lab1
+        int byteNum = i / 8;//计算在第几个字节
+        int posInByte = i % 8;//计算在该字节的第几位,从右往左算（这是因为JVM用big-ending）
+        header[byteNum] = editBitInByte(header[byteNum], posInByte, value);
+    }
+
+    /**
+     * 修改一个byte的指定位置的bit
+     * @param target    待修改的byte
+     * @param posInByte bit的位置在target的偏移量，从右往左且从0开始算，取值范围为0到7
+     * @param value     为true修改该bit为1,为false时修改为0
+     * @return 修改后的byte
+     */
+    private byte editBitInByte(byte target, int posInByte, boolean value) {
+        if (posInByte < 0 || posInByte > 7) {
+            throw new IllegalArgumentException();
+        }
+        byte b = (byte) (1 << posInByte);//将1这个bit移到指定位置，例如pos为3,value为true，将得到00001000
+        //如果value为1,使用字节00001000以及"|"操作可以将指定位置改为1，其他位置不变
+        //如果value为0,使用字节11110111以及"&"操作可以将指定位置改为0，其他位置不变
+        return value ? (byte) (target | b) : (byte) (target & ~b);
     }
 
     /**

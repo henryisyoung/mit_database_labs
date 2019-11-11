@@ -70,6 +70,7 @@ public class SeqScan implements OpIterator {
         this.tableAlias = tableAlias;
         this.tableId = tableid;
         this.iterator = Database.getCatalog().getDatabaseFile(tableId).iterator(tid);
+        updateTupleDesc();
     }
 
     public SeqScan(TransactionId tid, int tableId) {
